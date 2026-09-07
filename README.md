@@ -1,6 +1,6 @@
-# MusicPlayer（Windows 桌面音乐播放器）
+# yunMusicPlayer（云盘音乐播放器）
 
-跨平台音乐播放器 · Windows 端（WPF + .NET 10 + BASS 音频引擎 + 坚果云 WebDAV）。
+跨平台云盘音乐播放器 · Windows 端（WPF + .NET 10 + BASS 音频引擎 + 坚果云 WebDAV）。
 
 > 当前为 v0.1.0 早期版本，面向自用与小范围体验。
 
@@ -44,4 +44,4 @@ dotnet publish src/MusicPlayer.Desktop/MusicPlayer.Desktop.csproj -c Release -r 
 
 ## 版权与合规
 - 仅播放 / 下载**用户自有**的文件，属于个人使用范畴。
-- 不内置任何“搜索 / 分享他人资源”功能，那是版权红线。
+- 不内置任何“搜索 / 分享他人资源”功能。
