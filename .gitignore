@@ -1,0 +1,28 @@
+# ===== .NET 构建产物 =====
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+.vs/
+*.suo
+
+# ===== 发布输出（由 dotnet publish 生成，不入库；zip 由发布脚本上传到 Release）=====
+publish/
+
+# ===== 运行期生成的数据（真便携：落在 exe 同目录）=====
+library.db
+Covers/
+MusicPlayerCache/
+diag.log
+
+# ===== 第三方原生库：保留 src 下的构建输入，忽略其它 =====
+# src/MusicPlayer.Audio/Native/x64/*.dll 是 BASS 原生解码插件，作为构建输入纳入版本控制
+
+# ===== 误建文件 =====
+nul
+
+# ===== OS / 编辑器 =====
+Thumbs.db
+Desktop.ini
+.DS_Store

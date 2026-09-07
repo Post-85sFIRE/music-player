@@ -1,0 +1,106 @@
+<Window x:Class="MusicPlayer.Desktop.Views.CloudWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:MusicPlayer.Desktop.ViewModels"
+        xmlns:local="clr-namespace:MusicPlayer.Desktop.Converters"
+        Title="云盘" Height="600" Width="780" WindowStartupLocation="CenterOwner">
+  <Window.Resources>
+    <local:CloudIconConverter x:Key="CloudIconConverter"/>
+    <local:EmptyHintConverter x:Key="EmptyHintConverter"/>
+  </Window.Resources>
+  <DockPanel Margin="12">
+    <GroupBox Header="连接云盘（坚果云 WebDAV）" DockPanel.Dock="Top">
+      <StackPanel>
+        <DockPanel Margin="0,4">
+          <TextBlock Text="名称" Width="56" VerticalAlignment="Center"/>
+          <TextBox Text="{Binding NewName}" VerticalContentAlignment="Center"/>
+        </DockPanel>
+        <DockPanel Margin="0,4">
+          <TextBlock Text="URL" Width="56" VerticalAlignment="Center"/>
+          <TextBox Text="{Binding NewUrl}" VerticalContentAlignment="Center" ToolTip="WebDAV 根地址，如 https://dav.jianguoyun.com/dav/"/>
+        </DockPanel>
+        <DockPanel Margin="0,4">
+          <TextBlock Text="用户名" Width="56" VerticalAlignment="Center"/>
+          <TextBox Text="{Binding NewUser}" VerticalContentAlignment="Center"/>
+        </DockPanel>
+        <DockPanel Margin="0,4">
+          <TextBlock Text="密码" Width="56" VerticalAlignment="Center"/>
+          <PasswordBox x:Name="PwdBox" VerticalContentAlignment="Center"/>
+        </DockPanel>
+        <StackPanel Orientation="Horizontal" Margin="0,4">
+          <Button Content="连接并添加" Click="ConnectButton_Click"/>
+          <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap"/>
+        </StackPanel>
+      </StackPanel>
+    </GroupBox>
+
+    <GroupBox Header="已连接来源" DockPanel.Dock="Top" Height="84">
+      <ListBox x:Name="SourcesList" ItemsSource="{Binding Sources}" DisplayMemberPath="Name" SelectedItem="{Binding SelectedSource}" SelectionChanged="SourcesList_SelectionChanged"/>
+    </GroupBox>
+
+    <GroupBox Header="浏览" DockPanel.Dock="Top">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,4">
+          <Button Content="上级" Command="{Binding UpCommand}"/>
+          <TextBlock Text="{Binding CurrentFolderDisplay}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+          <Button Content="加入选中到列表" Command="{Binding AddSelectedToPlaylistCommand}"
+                  CommandParameter="{Binding ElementName=EntriesList, Path=SelectedItems}" Margin="12,0,0,0"/>
+          <Button Content="上传播放列表" Command="{Binding SyncPushCommand}" Margin="12,0,0,0"/>
+          <Button Content="下载播放列表" Command="{Binding SyncPullCommand}" Margin="6,0,0,0"/>
+          <TextBlock Text="{Binding SyncStatus}" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="#2E7D32"/>
+        </StackPanel>
+        <TextBlock DockPanel.Dock="Bottom" Text="（此目录为空）" Margin="2,4,0,0" Foreground="#999"
+                   Visibility="{Binding Entries.Count, Converter={StaticResource EmptyHintConverter}}"/>
+        <ListBox x:Name="EntriesList" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry}" SelectionMode="Extended">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Converter={StaticResource CloudIconConverter}}" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding Name}" FontWeight="Medium" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                <TextBlock Text="✓已缓存" Foreground="#2E7D32" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center">
+                  <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                      <Setter Property="Visibility" Value="Collapsed"/>
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsCached}" Value="True">
+                          <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+          <ListBox.ItemContainerStyle>
+            <Style TargetType="ListBoxItem">
+              <EventSetter Event="MouseDoubleClick" Handler="Entry_DoubleClick"/>
+              <Setter Property="ContextMenu">
+                <Setter.Value>
+                  <ContextMenu>
+                    <MenuItem Header="加入播放列表"
+                              Command="{Binding DataContext.AddToPlaylistCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              IsEnabled="{Binding PlacementTarget.DataContext.IsMusic, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    <MenuItem Header="播放"
+                              Command="{Binding DataContext.PlayEntryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              IsEnabled="{Binding PlacementTarget.DataContext.IsMusic, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    <MenuItem Header="进入"
+                              Command="{Binding DataContext.BrowseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              IsEnabled="{Binding PlacementTarget.DataContext.IsFolder, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    <MenuItem Header="加入此文件夹音乐"
+                              Command="{Binding DataContext.AddFolderMusicCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              IsEnabled="{Binding PlacementTarget.DataContext.IsFolder, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                  </ContextMenu>
+                </Setter.Value>
+              </Setter>
+            </Style>
+          </ListBox.ItemContainerStyle>
+        </ListBox>
+      </DockPanel>
+    </GroupBox>
+  </DockPanel>
+</Window>

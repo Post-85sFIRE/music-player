@@ -1,0 +1,14 @@
+{
+  "modelVersion": "6.0.2",
+  "name": "musicplayer",
+  "version": "1.0.0",
+  "description": "HarmonyOS music player (ArkTS / Stage model) — mirrors the Windows WPF player",
+  "main": "",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {},
+  "devDependencies": {
+    "@ohos/hypium": "1.0.19",
+    "@ohos/hamock": "1.0.0"
+  }
+}

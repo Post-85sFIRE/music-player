@@ -1,0 +1,330 @@
+// 主界面：本地音乐库 + 播放控制 + 云盘浏览 + 右侧歌词面板。
+// 二期增量 UI：云盘/主列表"✓已缓存"标记、歌词面板（搜索/高亮/点击 seek/自动滚动）、
+// 播放列表拖拽排序 + 选中移除/清空、去掉内联云盘输入改"⚙设置"入口。
+// UI 通过 @State 镜像 MainViewModel 的回调；route 回退时 onPageShow 重新同步。
+import { MainViewModel } from '../viewmodel/MainViewModel';
+import { Track, SourceType } from '../model/Track';
+import { PlayMode } from '../model/PlayerEngine';
+import { CloudEntry } from '../model/WebDavClient';
+import { CloudConfig, SettingsStore } from '../model/Settings';
+import { LyricLine } from '../model/Lyrics';
+import { router, Scroller } from '@kit.ArkUI';
+
+@Entry
+@Component
+struct Index {
+  // VM 来自 AppStorage（EntryAbility 已初始化），此处兜底用 getContext 构造默认实例。
+  vm: MainViewModel = new MainViewModel(getContext(this), new SettingsStore());
+
+  @State library: Track[] = [];
+  @State currentTitle: string = '未播放';
+  @State currentId: string = '';
+  @State isPlaying: boolean = false;
+  @State positionMs: number = 0;
+  @State durationMs: number = 0;
+  @State volume: number = 0.8;
+  @State mode: number = 0;
+  @State status: string = '就绪';
+
+  @State cloudSources: CloudConfig[] = [];
+  @State cloudEntries: CloudEntry[] = [];
+
+  // 歌词
+  @State lyricsLines: LyricLine[] = [];
+  @State lyricsSource: string = '';
+  @State lyricQuery: string = '';
+  @State activeLyricIndex: number = -1;
+  private lyricScroller: Scroller = new Scroller();
+
+  // 列表多选 / 拖拽
+  @State selectedIds: string[] = [];
+  @State dragFrom: number = -1;
+
+  aboutToAppear(): void {
+    const stored = AppStorage.get('vm') as MainViewModel;
+    if (stored) {
+      this.vm = stored;
+    }
+    this.vm.onLibraryChanged = () => { this.library = this.vm.library.slice(); };
+    this.vm.onCurrentChanged = () => {
+      this.currentTitle = this.vm.current ? this.vm.current.title : '未播放';
+      this.currentId = this.vm.current ? this.vm.current.id : '';
+    };
+    this.vm.onPlayStateChanged = () => { this.isPlaying = this.vm.isPlaying; };
+    this.vm.onProgress = () => {
+      this.positionMs = this.vm.positionMs;
+      this.durationMs = this.vm.durationMs;
+      this.syncActiveLyric();
+    };
+    this.vm.onCloudChanged = () => {
+      this.cloudSources = this.vm.cloudSources.slice();
+      this.cloudEntries = this.vm.cloudEntries.slice();
+    };
+    this.vm.onLyricsChanged = () => {
+      this.lyricsLines = this.vm.lyricsLines.slice();
+      this.lyricsSource = this.vm.lyricsSource;
+      this.activeLyricIndex = -1;
+      this.lyricScroller.scrollToIndex(0);
+    };
+    this.vm.onSettingsChanged = () => {
+      this.volume = this.vm.volume;
+      this.mode = this.vm.playMode as number;
+    };
+    this.mirrorAll();
+  }
+
+  onPageShow(): void {
+    // 从设置页返回时重新同步（音量/模式/列表/云盘等）
+    this.mirrorAll();
+  }
+
+  private mirrorAll(): void {
+    this.library = this.vm.library.slice();
+    this.cloudSources = this.vm.cloudSources.slice();
+    this.cloudEntries = this.vm.cloudEntries.slice();
+    this.volume = this.vm.volume;
+    this.mode = this.vm.playMode as number;
+    this.status = this.vm.status;
+    this.currentTitle = this.vm.current ? this.vm.current.title : '未播放';
+    this.currentId = this.vm.current ? this.vm.current.id : '';
+    this.lyricsLines = this.vm.lyricsLines.slice();
+    this.lyricsSource = this.vm.lyricsSource;
+  }
+
+  private syncActiveLyric(): void {
+    const idx: number = this.currentLyricIndex(this.positionMs);
+    if (idx !== this.activeLyricIndex) {
+      this.activeLyricIndex = idx;
+      if (idx >= 0) {
+        this.lyricScroller.scrollToIndex(idx, true);
+      }
+    }
+  }
+
+  // 二分查找当前应高亮的时间轴行（最后一个 timeMs <= positionMs 的行）
+  private currentLyricIndex(ms: number): number {
+    const lines: LyricLine[] = this.lyricsLines;
+    if (lines.length === 0) {
+      return -1;
+    }
+    let lo: number = 0;
+    let hi: number = lines.length - 1;
+    let ans: number = -1;
+    while (lo <= hi) {
+      const mid: number = (lo + hi) >> 1;
+      if (lines[mid].timeMs <= ms) {
+        ans = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return ans;
+  }
+
+  private formatTime(ms: number): string {
+    const totalSec: number = Math.floor(ms / 1000);
+    const m: number = Math.floor(totalSec / 60);
+    const s: number = totalSec % 60;
+    return (m < 10 ? '0' + m : '' + m) + ':' + (s < 10 ? '0' + s : '' + s);
+  }
+
+  private modeText(): string {
+    if (this.mode === PlayMode.LoopOne) {
+      return '单曲循环';
+    }
+    if (this.mode === PlayMode.Shuffle) {
+      return '随机';
+    }
+    return '顺序';
+  }
+
+  private cycleMode(): void {
+    const next: number = (this.mode + 1) % 3;
+    this.vm.setMode(next as PlayMode);
+    this.mode = next;
+  }
+
+  private isSelected(id: string): boolean {
+    return this.selectedIds.indexOf(id) >= 0;
+  }
+
+  private toggleSelect(id: string): void {
+    const arr: string[] = this.selectedIds.slice();
+    const i: number = arr.indexOf(id);
+    if (i >= 0) {
+      arr.splice(i, 1);
+    } else {
+      arr.push(id);
+    }
+    this.selectedIds = arr;
+  }
+
+  build() {
+    Column() {
+      Text(this.currentTitle).fontSize(22).fontWeight(FontWeight.Bold).margin(8)
+      Text(this.status).fontSize(12).fontColor('#888888')
+
+      Row() {
+        Text(this.formatTime(this.positionMs)).fontSize(12)
+        Slider({ value: this.positionMs, min: 0, max: this.durationMs > 0 ? this.durationMs : 1, step: 500 })
+          .layoutWeight(1)
+          .onChange((v: number) => { this.vm.seek(v); })
+        Text(this.formatTime(this.durationMs)).fontSize(12)
+      }.width('100%').padding(8)
+
+      Row() {
+        Button('上一首').onClick(() => { this.vm.prev(); })
+        Button(this.isPlaying ? '暂停' : '播放').onClick(() => { this.vm.togglePlay(); })
+        Button('下一首').onClick(() => { this.vm.next(); })
+        Button(this.modeText()).onClick(() => { this.cycleMode(); })
+        Blank().layoutWeight(1)
+        Button('⚙设置').onClick(() => { router.pushUrl({ url: 'pages/SettingsPage' }); }).margin({ left: 8 })
+      }.justifyContent(FlexAlign.Center).width('100%').margin(4)
+
+      Row() {
+        Text('音量').fontSize(12)
+        Slider({ value: this.volume, min: 0, max: 1, step: 0.05 })
+          .layoutWeight(1)
+          .onChange((v: number) => { this.volume = v; this.vm.setVolume(v); })
+      }.width('100%').padding(8)
+
+      // 主区域：左侧（音乐库 + 云盘）/ 右侧（歌词）
+      Row() {
+        Column() {
+          Row() {
+            Text('本地音乐库').fontSize(16).fontWeight(FontWeight.Bold)
+            Button('添加音乐').onClick(() => { this.vm.addLocalMusic(); }).margin({ left: 8 })
+          }.width('100%').padding({ left: 8, top: 8 })
+
+          Row() {
+            Button('移除选中').onClick(() => {
+              if (this.selectedIds.length > 0) {
+                this.vm.removeSelected(this.selectedIds.slice());
+                this.selectedIds = [];
+              }
+            }).margin(4)
+            Button('清空列表').onClick(() => {
+              this.vm.clearAll();
+              this.selectedIds = [];
+            }).margin(4)
+            Text(this.selectedIds.length > 0 ? `已选 ${this.selectedIds.length} 首` : '').fontSize(12).fontColor('#888888')
+          }.padding({ left: 4 })
+
+          List() {
+            ForEach(this.library, (t: Track) => {
+              ListItem() {
+                Row() {
+                  Text(this.isSelected(t.id) ? '☑' : '☐')
+                    .fontSize(14)
+                    .onClick(() => { this.toggleSelect(t.id); })
+                    .margin({ right: 6 })
+                  Text(t.title)
+                    .fontSize(14)
+                    .layoutWeight(1)
+                    .onClick(() => { this.vm.playTrack(t); })
+                  if (t.sourceType === SourceType.Cloud && t.isCached) {
+                    Text('✓已缓存').fontColor('#2e7d32').fontSize(12).margin({ right: 4 })
+                  }
+                  if (this.currentId === t.id) {
+                    Text('▶').fontColor('#1565c0').fontSize(12)
+                  }
+                }.padding(8)
+              }
+              .onDragStart(() => {
+                this.dragFrom = this.library.indexOf(t);
+                return {};
+              })
+              .onDrop(() => {
+                const to: number = this.library.indexOf(t);
+                if (this.dragFrom >= 0 && to >= 0 && this.dragFrom !== to) {
+                  this.vm.reorder(this.dragFrom, to);
+                }
+                this.dragFrom = -1;
+              })
+            }, (t: Track) => t.id)
+          }
+          .layoutWeight(1)
+          .width('100%')
+          .divider({ strokeWidth: 1, color: '#eeeeee' })
+
+          Divider()
+
+          Row() {
+            Text('云盘').fontSize(16).fontWeight(FontWeight.Bold)
+            Blank().layoutWeight(1)
+            Button('重连云盘').onClick(() => { this.vm.reconnectCloud(); }).margin(4)
+          }.width('100%').padding({ left: 8, top: 8 })
+
+          Row() {
+            ForEach(this.cloudSources, (s: CloudConfig) => {
+              Button(s.name).onClick(() => { this.vm.browseCloud(s.id, ''); }).margin(4)
+            }, (s: CloudConfig) => s.id)
+          }.padding(4).wrapContent(true)
+
+          Row() {
+            Button('返回上级').onClick(() => { this.vm.upCloud(); }).margin(4)
+          }.padding(4)
+
+          List() {
+            ForEach(this.cloudEntries, (e: CloudEntry) => {
+              ListItem() {
+                Row() {
+                  Text(e.name).fontSize(14).layoutWeight(1)
+                  if (e.isCached) {
+                    Text('✓已缓存').fontColor('#2e7d32').fontSize(12).margin({ right: 4 })
+                  }
+                  if (e.isFolder) {
+                    Button('打开').onClick(() => { this.vm.browseCloud(this.vm.selectedSourceId, e.id); })
+                  } else {
+                    Button('加入列表').onClick(() => { this.vm.addCloudToPlaylist(this.vm.selectedSourceId, e); })
+                  }
+                }.padding(8)
+              }
+            }, (e: CloudEntry) => e.id)
+          }.height(150).width('100%')
+        }
+        .layoutWeight(1)
+        .width('100%')
+
+        // 右侧歌词面板
+        Column() {
+          Text('歌词').fontSize(16).fontWeight(FontWeight.Bold).width('100%').padding(8)
+          TextInput({ placeholder: '搜索歌词，如 周杰伦-晴天', text: this.lyricQuery })
+            .width('100%')
+            .onChange((v: string) => { this.lyricQuery = v; })
+          Button('搜索').onClick(() => {
+            if (this.lyricQuery.trim().length > 0) {
+              this.vm.searchLyrics(this.lyricQuery.trim());
+            }
+          }).margin(4)
+          Text(this.lyricsSource).fontSize(12).fontColor('#888888').width('100%').padding({ left: 8, bottom: 4 })
+
+          List({ scroller: this.lyricScroller }) {
+            ForEach(this.lyricsLines, (line: LyricLine, index: number) => {
+              ListItem() {
+                Text(line.text)
+                  .fontSize(14)
+                  .fontColor(index === this.activeLyricIndex ? '#1565c0' : '#222222')
+                  .fontWeight(index === this.activeLyricIndex ? FontWeight.Bold : FontWeight.Normal)
+                  .width('100%')
+                  .padding(6)
+                  .onClick(() => { this.vm.seek(line.timeMs); })
+              }
+            }, (line: LyricLine, index: number) => index.toString())
+          }
+          .layoutWeight(1)
+          .width('100%')
+          .divider({ strokeWidth: 1, color: '#eeeeee' })
+        }
+        .width('42%')
+        .height('100%')
+        .backgroundColor('#fafafa')
+      }
+      .layoutWeight(1)
+      .width('100%')
+    }
+    .width('100%')
+    .height('100%')
+  }
+}

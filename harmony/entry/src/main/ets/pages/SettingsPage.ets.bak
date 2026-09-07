@@ -1,0 +1,171 @@
+// 设置页（二期 P1-7）：云盘源增删 / 账号 / 密码(掩码) / 重连；音量；播放模式；
+// 网络歌词开关；ReplayGain 模式选择。所有改动实时写回 MainViewModel 并持久化。
+import { MainViewModel } from '../viewmodel/MainViewModel';
+import { PlayMode } from '../model/PlayerEngine';
+import { CloudConfig, SettingsStore } from '../model/Settings';
+import { router, Select, Toggle, ToggleType } from '@kit.ArkUI';
+
+@Entry
+@Component
+struct SettingsPage {
+  vm: MainViewModel = new MainViewModel(getContext(this), new SettingsStore());
+
+  @State volume: number = 0.8;
+  @State mode: number = 0;
+  @State onlineLyricsEnabled: boolean = true;
+  @State replayGainMode: number = 0;
+  @State cloudSources: CloudConfig[] = [];
+
+  // 新增云盘表单
+  @State newName: string = '';
+  @State newUrl: string = '';
+  @State newUser: string = '';
+  @State newPwd: string = '';
+
+  aboutToAppear(): void {
+    const stored = AppStorage.get('vm') as MainViewModel;
+    if (stored) {
+      this.vm = stored;
+    }
+    this.vm.onSettingsChanged = () => {
+      this.volume = this.vm.volume;
+      this.mode = this.vm.playMode as number;
+      this.onlineLyricsEnabled = this.vm.onlineLyricsEnabled;
+      this.replayGainMode = this.vm.replayGainMode;
+      this.cloudSources = this.vm.cloudSources.slice();
+    };
+    this.mirrorAll();
+  }
+
+  onPageShow(): void {
+    this.mirrorAll();
+  }
+
+  private mirrorAll(): void {
+    this.volume = this.vm.volume;
+    this.mode = this.vm.playMode as number;
+    this.onlineLyricsEnabled = this.vm.onlineLyricsEnabled;
+    this.replayGainMode = this.vm.replayGainMode;
+    this.cloudSources = this.vm.cloudSources.slice();
+  }
+
+  private modeText(): string {
+    if (this.mode === PlayMode.LoopOne) {
+      return '单曲循环';
+    }
+    if (this.mode === PlayMode.Shuffle) {
+      return '随机';
+    }
+    return '顺序';
+  }
+
+  build() {
+    Column() {
+      Row() {
+        Button('返回').onClick(() => { router.back(); }).margin(8)
+        Text('设置').fontSize(20).fontWeight(FontWeight.Bold)
+      }.width('100%').padding(8)
+
+      Scroll() {
+        Column() {
+          // ---- 新增云盘 ----
+          Text('添加云盘').fontSize(16).fontWeight(FontWeight.Bold).width('100%').padding(8)
+          TextInput({ placeholder: '名称', text: this.newName }).onChange((v: string) => { this.newName = v; })
+          TextInput({ placeholder: 'WebDAV 地址', text: this.newUrl }).onChange((v: string) => { this.newUrl = v; })
+          TextInput({ placeholder: '用户名（坚果云为应用密码账号）', text: this.newUser }).onChange((v: string) => { this.newUser = v; })
+          TextInput({ placeholder: '密码 / 应用密码', text: this.newPwd }).type(InputType.Password).onChange((v: string) => { this.newPwd = v; })
+          Button('连接并保存').onClick(() => {
+            if (this.newUrl.trim().length > 0) {
+              this.vm.connectCloud(this.newName.trim(), this.newUrl.trim(), this.newUser.trim(), this.newPwd);
+              this.newName = '';
+              this.newUrl = '';
+              this.newUser = '';
+              this.newPwd = '';
+              this.cloudSources = this.vm.cloudSources.slice();
+            }
+          }).margin(4)
+
+          Divider()
+
+          // ---- 已配置云盘 ----
+          Text('已配置云盘').fontSize(16).fontWeight(FontWeight.Bold).width('100%').padding(8)
+          if (this.cloudSources.length === 0) {
+            Text('尚未配置云盘').fontSize(12).fontColor('#888888').padding(8)
+          }
+          ForEach(this.cloudSources, (s: CloudConfig) => {
+            Column() {
+              Row() {
+                Text(s.name).fontSize(15).fontWeight(FontWeight.Bold).layoutWeight(1)
+                if (this.vm.isConnected(s.id)) {
+                  Text('已连接').fontColor('#2e7d32').fontSize(12)
+                } else {
+                  Text('未连接').fontColor('#b71c1c').fontSize(12)
+                }
+              }.width('100%')
+              Text('账号：' + s.userName).fontSize(12).fontColor('#666666')
+              TextInput({ placeholder: '密码（已加密保存）', text: s.password })
+                .type(InputType.Password)
+                .enabled(false)
+                .width('100%')
+              Row() {
+                Button('重连').onClick(() => { this.vm.reconnectCloud(s.id); }).margin(4)
+                Button('移除').onClick(() => { this.vm.removeCloud(s.id); this.cloudSources = this.vm.cloudSources.slice(); }).margin(4)
+              }.padding(4)
+            }
+            .padding(8)
+            .backgroundColor('#f5f5f5')
+            .borderRadius(8)
+            .margin(4)
+            .width('100%')
+          }, (s: CloudConfig) => s.id)
+
+          Divider()
+
+          // ---- 播放 ----
+          Text('播放设置').fontSize(16).fontWeight(FontWeight.Bold).width('100%').padding(8)
+          Row() {
+            Text('音量').fontSize(14).width(60)
+            Slider({ value: this.volume, min: 0, max: 1, step: 0.05 })
+              .layoutWeight(1)
+              .onChange((v: number) => { this.volume = v; this.vm.setVolume(v); })
+          }.width('100%').padding(8)
+
+          Row() {
+            Text('播放模式').fontSize(14).width(60)
+            Select([
+              { value: '顺序' },
+              { value: '单曲循环' },
+              { value: '随机' }
+            ])
+              .selected(this.mode)
+              .layoutWeight(1)
+              .onSelect((i: number) => { this.vm.setMode(i as PlayMode); this.mode = i; })
+          }.width('100%').padding(8)
+
+          Row() {
+            Text('网络歌词').fontSize(14).layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.onlineLyricsEnabled })
+              .onChange((b: boolean) => { this.vm.setOnlineLyrics(b); this.onlineLyricsEnabled = b; })
+          }.width('100%').padding(8)
+
+          Row() {
+            Text('ReplayGain').fontSize(14).width(60)
+            Select([
+              { value: '关' },
+              { value: '专辑 (-3dB)' },
+              { value: '单曲 (-6dB)' }
+            ])
+              .selected(this.replayGainMode)
+              .layoutWeight(1)
+              .onSelect((i: number) => { this.vm.setReplayGain(i); this.replayGainMode = i; })
+          }.width('100%').padding(8)
+        }
+        .width('100%')
+      }
+      .layoutWeight(1)
+      .width('100%')
+    }
+    .width('100%')
+    .height('100%')
+  }
+}

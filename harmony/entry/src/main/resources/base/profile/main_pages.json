@@ -1,0 +1,10 @@
+{
+  "src": [
+    "pages/Index",
+    "pages/LibraryPage",
+    "pages/MorePage",
+    "pages/SettingsPage",
+    "pages/CloudPage",
+    "pages/AboutPage"
+  ]
+}

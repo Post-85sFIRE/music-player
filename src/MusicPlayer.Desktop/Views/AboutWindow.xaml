@@ -1,0 +1,15 @@
+<Window x:Class="MusicPlayer.Desktop.Views.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="关于 音乐播放器" Height="420" Width="360"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Icon="/Assets/logo.ico">
+  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+    <Image Source="/Assets/logo.png" Width="72" Height="72" Stretch="UniformToFill"/>
+    <TextBlock Text="音乐播放器" FontSize="20" FontWeight="Medium" HorizontalAlignment="Center" Margin="0,16,0,0"/>
+    <TextBlock Text="由 85后财务自由之路 制作" FontSize="14" Foreground="#5F5E5A" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+    <TextBlock Text="如果它对你有用，欢迎赞赏支持" FontSize="12" Foreground="#888" HorizontalAlignment="Center" Margin="0,18,0,8"/>
+    <Image Source="/Assets/donate.png" Width="200" Height="200" Stretch="Uniform"/>
+    <Button Content="确定" Width="80" Margin="0,18,0,0" Click="OK_Click"/>
+  </StackPanel>
+</Window>

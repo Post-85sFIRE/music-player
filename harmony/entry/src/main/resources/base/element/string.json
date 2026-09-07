@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "音乐播放器"
+    },
+    {
+      "name": "module_desc",
+      "value": "HarmonyOS 端音乐播放器"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "主Ability"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "音乐播放器"
+    },
+    {
+      "name": "perm_internet_reason",
+      "value": "需要访问网络以播放云盘（WebDAV）音乐"
+    }
+  ]
+}

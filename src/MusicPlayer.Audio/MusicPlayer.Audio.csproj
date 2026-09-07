@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>MusicPlayer.Audio</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Un4seen.Bass" Version="2.4.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MusicPlayer.Core\MusicPlayer.Core.csproj" />
+  </ItemGroup>
+  <!-- 原生 BASS 动态库（由 tools/fetch-bass.ps1 下载到 Native/x64）随构建拷贝到输出目录 -->
+  <ItemGroup>
+    <None Include="Native\x64\*.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
