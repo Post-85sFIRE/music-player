@@ -114,16 +114,23 @@ if (-not (Test-Path ".git")) {
 $remoteList = Invoke-Git @('remote')
 $hasOrigin  = ($script:LastGitExit -eq 0) -and (($remoteList -split "`r?`n") -contains 'origin')
 if (-not $hasOrigin) {
-    Write-Host "No remote 'origin' found, creating GitHub repo '$RepoName'..." -ForegroundColor Cyan
-    gh repo create $RepoName --$Visibility `
-        --source . --remote origin `
-        --description "Cross-platform music player (Windows WPF + .NET 10 + BASS / Android + Jetpack Compose + ExoPlayer), Nutstore WebDAV cloud playback" `
-        --yes
-    if ($LASTEXITCODE -ne 0) {
-        # Likely 'repository already exists' (e.g. the app's update endpoint already
-        # points at this repo). Attach the existing repo as origin and continue.
-        Write-Host "gh repo create failed; assuming '$RepoName' already exists, attaching remote." -ForegroundColor Yellow
-        git remote add origin "https://github.com/Post-85sFIRE/$RepoName.git"
+    $repoSlug = "Post-85sFIRE/$RepoName"
+    $repoUrl  = "https://github.com/$repoSlug.git"
+    # If the repo already exists on GitHub, attach it as 'origin'; otherwise create it.
+    # NOTE: `gh repo create` has NO `--yes` flag (that is `gh repo delete`). Do not add one.
+    & gh repo view $repoSlug *> $null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "GitHub repo '$repoSlug' already exists; attaching remote 'origin'." -ForegroundColor Cyan
+        git remote add origin $repoUrl
+    } else {
+        Write-Host "Creating GitHub repo '$repoSlug'..." -ForegroundColor Cyan
+        gh repo create $RepoName --$Visibility `
+            --source . --remote origin `
+            --description "Cross-platform music player (Windows WPF + .NET 10 + BASS / Android + Jetpack Compose + ExoPlayer), Nutstore WebDAV cloud playback"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "gh repo create failed; attaching existing remote as fallback." -ForegroundColor Yellow
+            git remote add origin $repoUrl
+        }
     }
 }
 
@@ -149,14 +156,41 @@ if ($porcelain) {
 } else {
     Write-Host "Working tree already committed for $Version (nothing new to commit)." -ForegroundColor DarkGray
 }
+# Make sure the release tag exists AND points at the commit we are releasing (HEAD).
 $existingTags = Invoke-Git @('tag', '-l', $Version)
+$headCommit   = (Invoke-Git @('rev-parse', 'HEAD') | Select-Object -First 1)
 if (-not $existingTags) {
     Invoke-Git @('tag', $Version) | Out-Null
+    Write-Host "Created tag $Version at $headCommit." -ForegroundColor Cyan
+} else {
+    $tagCommit = (Invoke-Git @('rev-parse', "$Version^{commit}") | Select-Object -First 1)
+    if ($tagCommit -ne $headCommit) {
+        Write-Host "Tag $Version pointed at stale commit $tagCommit; re-pointing to HEAD ($headCommit)." -ForegroundColor Yellow
+        Invoke-Git @('tag', '-f', $Version) | Out-Null
+    } else {
+        Write-Host "Tag $Version already at HEAD ($headCommit)." -ForegroundColor DarkGray
+    }
 }
+
 # Sync with remote so we only ever do a fast-forward push (never rewind main).
 Invoke-Git @('fetch', 'origin') | Out-Null
-Invoke-Git @('push', '-u', 'origin', 'main') | Out-Null
-Invoke-Git @('push', '--tags') | Out-Null
+
+Write-Host "Pushing main -> origin ..." -ForegroundColor Cyan
+$pushMain = Invoke-Git @('push', '-u', 'origin', 'main')
+$pushMain | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+if ($script:LastGitExit -ne 0) {
+    Write-Error "git push main failed (exit $($script:LastGitExit)). If it asked for credentials, run:  gh auth setup-git  then re-run."
+    exit 1
+}
+
+Write-Host "Pushing tag $Version -> origin ..." -ForegroundColor Cyan
+$pushTag = Invoke-Git @('push', 'origin', "refs/tags/${Version}:refs/tags/${Version}")
+$pushTag | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+if ($script:LastGitExit -ne 0) {
+    Write-Error "git push tag $Version failed (exit $($script:LastGitExit))."
+    exit 1
+}
+Write-Host "Push OK: main + tag $Version are on GitHub." -ForegroundColor Green
 
 # Create the GitHub Release (idempotent: skip if it already exists).
 $relView = gh release view $Version 2>$null
@@ -172,4 +206,5 @@ if ($LASTEXITCODE -eq 0) {
 $user = gh api user --jq .login
 Write-Host ""
 Write-Host ("Published {0} -> https://github.com/{1}/{2}/releases/tag/{0}" -f $Version, $user, $RepoName) -ForegroundColor Green
+
 
