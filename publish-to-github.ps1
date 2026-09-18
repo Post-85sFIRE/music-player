@@ -1,4 +1,4 @@
-# One-click publish to GitHub.
+﻿# One-click publish to GitHub.
 # Run on YOUR machine where `gh` is already logged in (gh auth login).
 # Usage:  .\publish-to-github.ps1  [-RepoName music-player] [-Visibility public] [-Version v1.0.0]
 param(
@@ -117,7 +117,7 @@ if (-not $hasOrigin) {
     Write-Host "No remote 'origin' found, creating GitHub repo '$RepoName'..." -ForegroundColor Cyan
     gh repo create $RepoName --$Visibility `
         --source . --remote origin `
-        --description "跨平台音乐播放器（Windows WPF + .NET 10 + BASS / Android + Jetpack Compose + ExoPlayer），坚果云 WebDAV 云播放" `
+        --description "Cross-platform music player (Windows WPF + .NET 10 + BASS / Android + Jetpack Compose + ExoPlayer), Nutstore WebDAV cloud playback" `
         --yes
     if ($LASTEXITCODE -ne 0) {
         # Likely 'repository already exists' (e.g. the app's update endpoint already
@@ -172,3 +172,4 @@ if ($LASTEXITCODE -eq 0) {
 $user = gh api user --jq .login
 Write-Host ""
 Write-Host ("Published {0} -> https://github.com/{1}/{2}/releases/tag/{0}" -f $Version, $user, $RepoName) -ForegroundColor Green
+
