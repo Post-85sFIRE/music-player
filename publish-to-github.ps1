@@ -153,6 +153,8 @@ $existingTags = Invoke-Git @('tag', '-l', $Version)
 if (-not $existingTags) {
     Invoke-Git @('tag', $Version) | Out-Null
 }
+# Sync with remote so we only ever do a fast-forward push (never rewind main).
+Invoke-Git @('fetch', 'origin') | Out-Null
 Invoke-Git @('push', '-u', 'origin', 'main') | Out-Null
 Invoke-Git @('push', '--tags') | Out-Null
 
