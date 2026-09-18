@@ -39,4 +39,7 @@ public class AppSettings
 
     /// <summary>云盘歌曲：若从网络/内嵌拿到歌词，是否自动上传回云盘同目录 .lrc（让歌词跟着歌走）。</summary>
     public bool AutoUploadCloudLyrics { get; set; } = true;
+
+    /// <summary>更新检查地址（留空则用内置默认 GitHub Releases 地址）。支持 GitHub Releases JSON 或自定义 {version,url} JSON。</summary>
+    public string UpdateUrl { get; set; } = "";
 }

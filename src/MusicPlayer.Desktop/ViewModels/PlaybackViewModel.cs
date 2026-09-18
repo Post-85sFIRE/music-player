@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MusicPlayer.Core.Enums;
 using MusicPlayer.Core.Interfaces;
+using MusicPlayer.Core.Lyrics;
 using MusicPlayer.Core.Models;
 using MusicPlayer.Services;
 
@@ -17,6 +18,10 @@ public partial class PlaybackViewModel
 {
     private readonly PlaybackManager _pm;
     private readonly ISettingsService _settings;
+    private readonly LyricsService _lyrics;
+
+    /// <summary>手动/自动搜索歌词命中多组候选时触发，由 View 弹出选择对话框。</summary>
+    public event EventHandler<LyricsCandidatesRequestedEventArgs>? LyricsCandidatesRequested;
 
     [ObservableProperty] private string _currentTitle = "未播放";
     [ObservableProperty] private string _currentArtist = "";
@@ -34,16 +39,20 @@ public partial class PlaybackViewModel
 
     // 播放/暂停按钮上的文字（随 IsPlaying 切换），避免再放一个停止键。
     [ObservableProperty] private string _playPauseLabel = "播放";
+
+    /// <summary>非模态状态提示（云曲加载中 / 加载失败等），显示在"正在播放"面板，不打断播放。</summary>
+    [ObservableProperty] private string _statusText = "";
     // 播放模式按钮上的中文文案。
     [ObservableProperty] private string _modeLabel = "顺序播放";
 
     private List<LyricLineViewModel> _lyricList = new();
     private int _activeIdx = -1;
 
-    public PlaybackViewModel(PlaybackManager pm, ISettingsService settings)
+    public PlaybackViewModel(PlaybackManager pm, ISettingsService settings, LyricsService lyrics)
     {
         _pm = pm;
         _settings = settings;
+        _lyrics = lyrics;
         _volume = settings.Settings.Volume;
         _mode = settings.Settings.DefaultMode;
         ModeLabel = ToModeLabel(_mode);
@@ -57,6 +66,8 @@ public partial class PlaybackViewModel
             UpdateActiveLine(e.Position);
         });
         _pm.LyricsChanged += (_, e) => OnLyricsChanged(e);
+        _pm.LyricsCandidatesRequested += (_, e) => LyricsCandidatesRequested?.Invoke(this, e);
+        _pm.StatusMessage += (_, msg) => System.Windows.Application.Current.Dispatcher.Invoke(() => StatusText = msg);
     }
 
     private void OnCurrentChanged()
@@ -181,13 +192,45 @@ public partial class PlaybackViewModel
 
     partial void OnVolumeChanged(float value) => _pm.SetVolume(value);
 
-    // 右侧歌词区手动搜索：用户输入关键词，跳过本地/内嵌/云盘，直接联网查并写回绑定。
+    // 右侧歌词区手动搜索：先查候选；多组则弹选择框让用户挑；单组/无则直接处理。
     [RelayCommand]
-    private void SearchLyrics()
+    private async Task SearchLyrics()
     {
         if (string.IsNullOrWhiteSpace(LyricsSearchText)) return;
+        var track = _pm.CurrentTrack;
+        if (track is null) { LyricsSource = "请先播放一首歌曲再搜索歌词"; return; }
+
         LyricsSource = "歌词搜索中…";
-        _pm.SearchLyrics(LyricsSearchText);
+        LyricsCandidate[] candidates;
+        try { candidates = await _lyrics.SearchCandidatesAsync(LyricsSearchText, track, CancellationToken.None); }
+        catch { candidates = Array.Empty<LyricsCandidate>(); }
+
+        if (candidates.Length == 0) { LyricsSource = "未找到匹配歌词，可尝试更换关键词"; return; }
+        if (candidates.Length == 1) { await LoadCandidateInternal(candidates[0], track); return; }
+
+        // 多组候选：交给 View 弹出选择对话框（用户点击确定后回调 ChooseCandidate）。
+        LyricsCandidatesRequested?.Invoke(this, new LyricsCandidatesRequestedEventArgs { Candidates = candidates });
+    }
+
+    /// <summary>用户在候选选择框中确认后，由 View 调用以加载选定的歌词。</summary>
+    public void ChooseCandidate(LyricsCandidate candidate)
+    {
+        var track = _pm.CurrentTrack;
+        if (track is null) return;
+        _ = LoadCandidateInternal(candidate, track);
+    }
+
+    private async Task LoadCandidateInternal(LyricsCandidate candidate, Track track)
+    {
+        try
+        {
+            await _lyrics.LoadCandidateAsync(candidate, track, _pm.CurrentLocalPath, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("[PlaybackViewModel] 加载候选歌词失败: " + ex.Message);
+            LyricsSource = "歌词加载失败：" + ex.Message;
+        }
     }
 
     public void Seek(TimeSpan position) => _pm.Seek(position);

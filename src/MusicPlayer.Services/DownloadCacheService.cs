@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -24,6 +25,11 @@ public class DownloadCacheService : IDownloadCacheService
         Directory.CreateDirectory(_root);
     }
 
+    // 同一 sourceId 的缓存操作串行化：避免并发下载/读写竞争。
+    // File.Create 默认 FileShare.None —— 若一个任务正在写、另一个任务紧接着把同一路径交给 BASS 播放，
+    // 就会报 IOException"文件被另一个进程占用"（真实故障：新下载的云曲首次播放失败）。
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _gates = new();
+
     /// <summary>确保云文件已缓存到本地，返回本地路径供 BASS 加载。</summary>
     public async Task<string> CacheToLocalAsync(string sourceId, Func<Task<Stream>> remoteOpener, IProgress<double>? progress, CancellationToken ct)
     {
@@ -36,24 +42,47 @@ public class DownloadCacheService : IDownloadCacheService
             return path;
         }
 
-        await using var remote = await remoteOpener();
-        await using var dst = File.Create(path);
-        var buf = new byte[81920];
-        long total = remote.CanSeek ? remote.Length : 0;
-        long read = 0;
-        int n;
-        while ((n = await remote.ReadAsync(buf, ct)) > 0)
+        var gate = _gates.GetOrAdd(sourceId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try
         {
-            await dst.WriteAsync(buf.AsMemory(0, n), ct);
-            read += n;
-            if (total > 0) progress?.Report((double)read / total);
-        }
+            // 双重检查：等锁期间同一首可能已被其它任务下载完成。
+            if (File.Exists(path) && new FileInfo(path).Length > 0)
+            {
+                CleanupLegacyDuplicates(path, sourceId);
+                return path;
+            }
 
-        // 缓存完成后清理旧版重复文件（旧版用 string.GetHashCode，每进程重启都变，会留下多个副本）。
-        CleanupLegacyDuplicates(path, sourceId);
-        // 落盘成功 → 通知 UI 刷新"已缓存"标记（参数即 sourceId，便于定位列表条目）。
-        RaiseCached(sourceId);
-        return path;
+            // 关键修复：先写临时文件，完整落盘后再原子改名到最终路径。
+            // 这样最终缓存文件只在"写句柄已全部释放"后才出现，彻底避免 BASS 撞上被占用的半成品文件。
+            var tmp = path + ".download";
+            var remote = await remoteOpener();
+            await using (remote)
+            {
+                await using var dst = File.Create(tmp);
+                var buf = new byte[81920];
+                long total = remote.CanSeek ? remote.Length : 0;
+                long read = 0;
+                int n;
+                while ((n = await remote.ReadAsync(buf, ct)) > 0)
+                {
+                    await dst.WriteAsync(buf.AsMemory(0, n), ct);
+                    read += n;
+                    if (total > 0) progress?.Report((double)read / total);
+                }
+            }
+            File.Move(tmp, path, overwrite: true);
+
+            // 缓存完成后清理旧版重复文件（旧版用 string.GetHashCode，每进程重启都变，会留下多个副本）。
+            CleanupLegacyDuplicates(path, sourceId);
+            // 落盘成功 → 通知 UI 刷新"已缓存"标记（参数即 sourceId，便于定位列表条目）。
+            RaiseCached(sourceId);
+            return path;
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     /// <summary>判断某 sourceId 是否已在缓存目录存在有效文件（长度 > 0）。</summary>

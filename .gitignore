@@ -1,3 +1,22 @@
+# ===== 非 Windows 端源码（按用户要求不上传）=====
+android/
+harmony/
+.hvigor/
+.ui_assets/
+backend/
+privacy-policy/
+soft-copyright/
+
+# ===== WorkBuddy 内部记忆（敏感，不上传）=====
+.workbuddy/
+
+# ===== Gradle 发行包（本地构建工具，非源码）=====
+gradle-8.9/
+
+# ===== 发布产物（zip/apk 作为 Release 资源上传，不入库）=====
+publish/
+release/
+
 # ===== .NET 构建产物 =====
 bin/
 obj/
@@ -6,9 +25,6 @@ obj/
 *.user
 .vs/
 *.suo
-
-# ===== 发布输出（由 dotnet publish 生成，不入库；zip 由发布脚本上传到 Release）=====
-publish/
 
 # ===== 运行期生成的数据（真便携：落在 exe 同目录）=====
 library.db
@@ -21,6 +37,45 @@ diag.log
 
 # ===== 误建文件 =====
 nul
+
+# ===== 排查用临时日志/转储（沙箱 safe-delete 拦截，删不掉，统一忽略）=====
+/_*.txt
+/_*.log
+/__*.txt
+/_dump_prefs.pb
+*.log
+*.bin
+*.wav
+*.docx
+*.pb
+*.preferences_pb
+activity_dump*.txt
+anr_dump.txt
+build*.txt
+build*.log
+buildresult.txt
+copy_result.txt
+clean.log
+dl*.log
+find*.txt
+logcat*.txt
+mirror.log
+redir.log
+window_*.txt
+window_dump.txt
+pid.txt
+unzip.log
+webdav-probe.py
+gen_proto.py
+refresh-icon-cache.cmd
+g89.zip
+g89.bin
+music_prefs.preferences_pb
+可行性分析.md
+合规资质办理指南-*.md
+投稿文案-*.md
+发布准备-*.md
+MusicPlayer-操作手册-*.docx
 
 # ===== OS / 编辑器 =====
 Thumbs.db

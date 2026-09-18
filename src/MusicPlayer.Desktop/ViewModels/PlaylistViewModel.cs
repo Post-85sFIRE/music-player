@@ -299,6 +299,83 @@ public partial class PlaylistViewModel
         SyncStatus = "已下载到本地：" + dest; // Track 同引用，徽标/按钮自动刷新
     }
 
+    /// <summary>缓存目录（下载/缓存根），用于"打开文件夹"定位已缓存云曲的落盘位置。</summary>
+    public string CacheRoot
+    {
+        get
+        {
+            var p = _settings.Settings.DownloadPath;
+            return string.IsNullOrWhiteSpace(p)
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), "MusicPlayerCache")
+                : p;
+        }
+    }
+
+    /// <summary>右键"上传到云盘"：把本地音乐文件上传到云盘固定目录 yunMusicPlayer/（文件名不变）。</summary>
+    [RelayCommand]
+    private async Task UploadToCloudAsync(PlaylistRow? row)
+    {
+        var t = row?.Item?.Track;
+        if (t is null) return;
+        if (t.SourceType != TrackSourceType.Local) { SyncStatus = "仅本地音乐可上传到云盘"; return; }
+        if (string.IsNullOrEmpty(t.FilePath) || !File.Exists(t.FilePath)) { SyncStatus = "文件不存在，无法上传"; return; }
+
+        var p = await GetCloudProviderAsync();
+        if (p is null) return;
+
+        var name = Path.GetFileName(t.FilePath);
+        var destId = CloudPaths.MusicPath(name);
+        try
+        {
+            await p.EnsureFolderAsync(CloudPaths.AppRoot, CancellationToken.None);
+            await using var fs = File.OpenRead(t.FilePath);
+            await p.UploadAsync(destId, fs, CancellationToken.None);
+            SyncStatus = "已上传到云盘：" + destId;
+        }
+        catch (Exception ex) { SyncStatus = "上传失败：" + ex.Message; }
+    }
+
+    /// <summary>右键"下载"：弹出另存为窗口，把云盘文件保存到用户指定位置（不改动播放列表内曲目标识）。</summary>
+    [RelayCommand]
+    private async Task DownloadAsAsync(PlaylistRow? row)
+    {
+        var t = row?.Item?.Track;
+        if (t is null) return;
+        if (t.SourceType != TrackSourceType.Cloud) return;
+
+        var p = await GetProviderByIdAsync(t.SourceId);
+        if (p is null) { SyncStatus = "无法连接云盘，下载取消"; return; }
+
+        string? dest = null;
+        var app = System.Windows.Application.Current;
+        if (app is not null)
+        {
+            if (app.Dispatcher.CheckAccess()) dest = PickSavePath(t);
+            else app.Dispatcher.Invoke(() => dest = PickSavePath(t));
+        }
+        if (dest is null) return;
+
+        try
+        {
+            await p.DownloadAsync(t.FilePath, dest, null, CancellationToken.None);
+            SyncStatus = "已保存：" + dest;
+        }
+        catch (Exception ex) { SyncStatus = "下载失败：" + ex.Message; }
+    }
+
+    private static string? PickSavePath(Track t)
+    {
+        var ext = string.IsNullOrEmpty(Path.GetExtension(t.FilePath)) ? ".mp3" : Path.GetExtension(t.FilePath);
+        var name = string.Join("_", (t.Title ?? "track").Split(Path.GetInvalidFileNameChars()));
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            FileName = name + ext,
+            Filter = "音频文件|*.*",
+            Title = "下载保存为"
+        };
+        return dlg.ShowDialog() == true ? dlg.FileName : null;
+    }
+
     private async Task<ICloudSourceProvider?> GetCloudProviderAsync()
     {
         var cfg = _settings.Settings.CloudSources.FirstOrDefault();

@@ -1,8 +1,8 @@
-# yunMusicPlayer（云盘音乐播放器）
+# MusicPlayer（Windows 桌面音乐播放器）
 
-跨平台云盘音乐播放器 · Windows 端（WPF + .NET 10 + BASS 音频引擎 + 坚果云 WebDAV）。
+跨平台音乐播放器 · Windows 端（WPF + .NET 10 + BASS 音频引擎 + 坚果云 WebDAV）。
 
-> 当前为 v0.1.0 早期版本，面向自用与小范围体验。
+> 当前为 v1.0.0 正式版，提供 **Windows 桌面端** 与 **Android 端** 两个平台。
 
 ## 功能
 - **本地音乐库**：文件夹扫描、ID3/APE/Vorbis 标签解析、封面提取
@@ -13,9 +13,18 @@
 - **歌词**：本地 .lrc / 内嵌标签 / 云盘同目录 .lrc / 网络 API（三层来源）
 
 ## 下载
-- 前往本项目的 **Releases** 页下载 `MusicPlayer-Desktop-win-x64-v0.1.0.zip`
+
+### Windows（x64 自包含便携版）
+- 前往本项目的 **Releases** 页下载 `MusicPlayer-Desktop-win-x64-v1.0.0.zip`
 - 解压到任意**可写目录**（如桌面、文档、U 盘），双击 `MusicPlayer.Desktop.exe` 即可运行
 - **无需安装 .NET Runtime**（已自包含打包）
+- 未签名程序首次运行可能被 SmartScreen 拦截，点“更多信息 → 仍要运行”即可
+
+### Android
+- 前往本项目的 **Releases** 页下载 `app-yunMusicPlayer-release.apk`
+- 在手机上允许“安装未知来源应用”后安装
+- 首次启动在“设置 / 云盘”中接入你的 WebDAV（如坚果云）即可播放云端音乐
+- 应用内支持启动自动检查更新 + 设置页手动检查（拉取本仓库根目录 `version.json`）
 
 ## 运行要求
 - Windows 10 19041 (20H1) 或更高版本，x64
@@ -44,4 +53,4 @@ dotnet publish src/MusicPlayer.Desktop/MusicPlayer.Desktop.csproj -c Release -r 
 
 ## 版权与合规
 - 仅播放 / 下载**用户自有**的文件，属于个人使用范畴。
-- 不内置任何“搜索 / 分享他人资源”功能。
+- 不内置任何“搜索 / 分享他人资源”功能，那是版权红线。

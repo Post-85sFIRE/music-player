@@ -93,6 +93,8 @@
 
     <!-- 播放列表序号 / 正在播放高亮 转换器 -->
     <local:IsCurrentItemConverter x:Key="IsCurrentItemConverter"/>
+    <!-- 播放列表时长格式化（秒 → m:ss） -->
+    <local:DurationConverter x:Key="DurationConverter"/>
   </Window.Resources>
 
   <DockPanel>
@@ -144,16 +146,19 @@
       <!-- 播放列表 -->
       <GroupBox Header="播放列表" Grid.Column="0" Margin="4">
         <DockPanel>
-          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,4,0,4">
-            <Button Content="添加文件" Command="{Binding Playlist.AddFilesCommand}"/>
-            <Button Content="添加文件夹" Command="{Binding Playlist.AddFolderCommand}" Margin="6,0,0,0"/>
-            <Button Content="清空" Command="{Binding Playlist.ClearCommand}" Margin="6,0,0,0"/>
-            <Button Content="移除（选中）" Command="{Binding Playlist.RemoveSelectedCommand}" CommandParameter="{Binding ElementName=PlaylistList, Path=SelectedItems}" Margin="6,0,0,0"/>
-            <TextBox Text="{Binding Playlist.SearchText, UpdateSourceTrigger=PropertyChanged}"
-                     Width="120" Margin="6,0,0,0" VerticalContentAlignment="Center"/>
-            <Button Content="保存到云盘" Command="{Binding Playlist.SaveToCloudCommand}" Margin="10,0,0,0"/>
-            <Button Content="从云盘加载" Command="{Binding Playlist.LoadFromCloudCommand}" Margin="6,0,0,0"/>
-            <TextBlock Text="{Binding Playlist.SyncStatus}" Foreground="#2E7D32" VerticalAlignment="Center" Margin="8,0,0,0"/>
+          <StackPanel DockPanel.Dock="Top" Margin="0,4,0,4">
+            <StackPanel Orientation="Horizontal">
+              <Button Content="添加文件" Command="{Binding Playlist.AddFilesCommand}"/>
+              <Button Content="添加文件夹" Command="{Binding Playlist.AddFolderCommand}" Margin="6,0,0,0"/>
+              <Button Content="清空" Command="{Binding Playlist.ClearCommand}" Margin="6,0,0,0"/>
+              <Button Content="移除（选中）" Command="{Binding Playlist.RemoveSelectedCommand}" CommandParameter="{Binding ElementName=PlaylistList, Path=SelectedItems}" Margin="6,0,0,0"/>
+              <TextBox Text="{Binding Playlist.SearchText, UpdateSourceTrigger=PropertyChanged}"
+                       Width="120" Margin="6,0,0,0" VerticalContentAlignment="Center"/>
+              <Button Content="保存到云盘" Command="{Binding Playlist.SaveToCloudCommand}" Margin="10,0,0,0"/>
+              <Button Content="从云盘加载" Command="{Binding Playlist.LoadFromCloudCommand}" Margin="6,0,0,0"/>
+            </StackPanel>
+            <TextBlock Text="{Binding Playlist.SyncStatus}" Foreground="#2E7D32"
+                       TextWrapping="Wrap" Margin="2,4,0,0"/>
           </StackPanel>
           <ListBox x:Name="PlaylistList"
                    ItemsSource="{Binding Playlist.ItemsView}"
@@ -186,53 +191,61 @@
             </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>
               <DataTemplate>
-                <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="{Binding Index}" Width="28" Foreground="#888" VerticalAlignment="Center"/>
-                  <TextBlock Text="{Binding Item.Track.Title}" FontWeight="Medium" VerticalAlignment="Center"/>
-                  <TextBlock Text="{Binding Item.Track.Artist, StringFormat=' — {0}'}" Foreground="#5F5E5A" VerticalAlignment="Center"/>
-                  <TextBlock VerticalAlignment="Center" Margin="8,0,0,0" Padding="4,1" Foreground="White" Background="#9E9E9E" FontSize="11">
-                    <TextBlock.Style>
-                      <Style TargetType="TextBlock">
-                        <Setter Property="Text" Value="本地"/>
-                        <Style.Triggers>
-                          <DataTrigger Binding="{Binding Item.Track.SourceType}" Value="Cloud">
-                            <Setter Property="Text" Value="☁ 云"/>
-                            <Setter Property="Background" Value="#1565C0"/>
-                          </DataTrigger>
-                        </Style.Triggers>
-                      </Style>
-                    </TextBlock.Style>
-                  </TextBlock>
-                  <TextBlock Text="✓已缓存" Foreground="#2E7D32" FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0">
-                    <TextBlock.Style>
-                      <Style TargetType="TextBlock">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                          <DataTrigger Binding="{Binding IsCached}" Value="True">
-                            <Setter Property="Visibility" Value="Visible"/>
-                          </DataTrigger>
-                        </Style.Triggers>
-                      </Style>
-                    </TextBlock.Style>
-                  </TextBlock>
-                  <Button Content="下载" Command="{Binding RelativeSource={RelativeSource AncestorType=ListBox}, Path=DataContext.Playlist.DownloadCommand}" CommandParameter="{Binding}" Margin="8,0,0,0" Visibility="Collapsed">
-                    <Button.Style>
-                      <Style TargetType="Button">
-                        <Style.Triggers>
-                          <DataTrigger Binding="{Binding Item.Track.SourceType}" Value="Cloud">
-                            <Setter Property="Visibility" Value="Visible"/>
-                          </DataTrigger>
-                        </Style.Triggers>
-                      </Style>
-                    </Button.Style>
-                  </Button>
-                </StackPanel>
+                <DockPanel LastChildFill="True">
+                  <TextBlock DockPanel.Dock="Right"
+                             Text="{Binding Item.Track.DurationSec, Converter={StaticResource DurationConverter}}"
+                             Foreground="#888" FontSize="12" VerticalAlignment="Center" Margin="8,0,4,0"/>
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Index}" Width="28" Foreground="#888" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Item.Track.Title}" FontWeight="Medium" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Item.Track.Artist, StringFormat=' — {0}'}" Foreground="#5F5E5A" VerticalAlignment="Center"/>
+                    <TextBlock VerticalAlignment="Center" Margin="8,0,0,0" Padding="4,1" Foreground="White" Background="#9E9E9E" FontSize="11">
+                      <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                          <Setter Property="Text" Value="本地"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding Item.Track.SourceType}" Value="Cloud">
+                              <Setter Property="Text" Value="☁ 云"/>
+                              <Setter Property="Background" Value="#1565C0"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="✓已缓存" Foreground="#2E7D32" FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0">
+                      <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                          <Setter Property="Visibility" Value="Collapsed"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsCached}" Value="True">
+                              <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </TextBlock.Style>
+                    </TextBlock>
+                    <Button Content="下载" Command="{Binding RelativeSource={RelativeSource AncestorType=ListBox}, Path=DataContext.Playlist.DownloadCommand}" CommandParameter="{Binding}" Margin="8,0,0,0" Visibility="Collapsed">
+                      <Button.Style>
+                        <Style TargetType="Button">
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding Item.Track.SourceType}" Value="Cloud">
+                              <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Button.Style>
+                    </Button>
+                  </StackPanel>
+                </DockPanel>
               </DataTemplate>
             </ListBox.ItemTemplate>
             <ListBox.ContextMenu>
-              <ContextMenu>
-                <MenuItem Header="移除（选中）" Click="PlaylistRemove_Click"/>
-                <MenuItem Header="播放" Click="PlaylistPlay_Click"/>
+              <ContextMenu Opened="PlaylistContextMenu_Opened">
+                <MenuItem x:Name="MiPlay" Header="播放" Click="PlaylistPlay_Click" FontWeight="Bold"/>
+                <MenuItem x:Name="MiOpenFolder" Header="打开文件夹" Click="PlaylistOpenFolder_Click"/>
+                <MenuItem x:Name="MiUpload" Header="上传到云盘" Click="PlaylistUpload_Click"/>
+                <MenuItem x:Name="MiDownload" Header="下载" Click="PlaylistDownloadAs_Click"/>
+                <MenuItem x:Name="MiRemove" Header="移除（选中）" Click="PlaylistRemove_Click"/>
               </ContextMenu>
             </ListBox.ContextMenu>
           </ListBox>
@@ -256,6 +269,8 @@
               <!-- 需求8：把"正在播放 第N首/共M首"放在右侧「正在播放」面板，而非播放列表左下角 -->
               <TextBlock Text="{Binding Playlist.NowPlayingCaption}" FontSize="12" Foreground="#888" Margin="0,14,0,0"/>
               <TextBlock Text="{Binding Playback.LyricsSource}" FontSize="11" Foreground="#9E9E9E" Margin="0,6,0,0"/>
+              <!-- 需求1：云曲后台缓存时不弹窗，静默加载；状态文字展示在播放卡片底部，加载完自动消失 -->
+              <TextBlock Text="{Binding Playback.StatusText}" FontSize="12" Foreground="#1976D2" Margin="0,6,0,0" TextWrapping="Wrap" MaxWidth="420"/>
             </StackPanel>
             <Image Source="/Assets/donate_corner.png" Width="80" Height="80" HorizontalAlignment="Right" VerticalAlignment="Top"
                    Stretch="Uniform" Cursor="Hand" ToolTip="给85后财务自由之路赞赏" MouseLeftButtonUp="DonateImage_Click"/>

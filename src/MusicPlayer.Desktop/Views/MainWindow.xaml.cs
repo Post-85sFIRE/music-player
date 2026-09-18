@@ -1,26 +1,67 @@
 using System;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Extensions.DependencyInjection;
+using MusicPlayer.Core.Enums;
 using MusicPlayer.Core.Models;
+using MusicPlayer.Core.Lyrics;
 using MusicPlayer.Desktop.ViewModels;
+using MusicPlayer.Desktop.Views;
+using System.Windows.Forms;
+using System.ComponentModel;
 
 namespace MusicPlayer.Desktop.Views;
 
 public partial class MainWindow : Window
 {
+    private NotifyIcon? _notify;
+    private bool _forceClose;
+
     public MainWindow()
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        InitTrayIcon();
+    }
+
+    private void InitTrayIcon()
+    {
+        try
+        {
+            _notify = new NotifyIcon
+            {
+                Icon = System.Drawing.Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location),
+                Text = "音乐播放器",
+                Visible = false
+            };
+            // 左键单击 / 双击还原窗口；右键由 ContextMenuStrip 自动弹出菜单，不还原窗口（符合"右键只显示菜单，左键/双击才弹窗"）。
+            _notify.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) RestoreFromTray(); };
+            _notify.MouseDoubleClick += (_, e) => { if (e.Button == MouseButtons.Left) RestoreFromTray(); };
+
+            var trayMenu = new System.Windows.Forms.ContextMenuStrip();
+            trayMenu.Items.Add("显示", null, (_, _) => RestoreFromTray());
+            trayMenu.Items.Add("退出", null, (_, _) => ExitApp());
+            _notify.ContextMenuStrip = trayMenu;
+        }
+        catch
+        {
+            // 托盘初始化失败不应影响主窗口。
+            _notify = null;
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         SeekSlider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler(OnSeekDragCompleted));
+        PlaylistList.ContextMenuOpening += PlaylistList_ContextMenuOpening;
+        if (DataContext is MainViewModel vm)
+            vm.Playback.LyricsCandidatesRequested += OnLyricsCandidatesRequested;
     }
 
     private void OnSeekDragCompleted(object sender, DragCompletedEventArgs e)
@@ -47,6 +88,80 @@ public partial class MainWindow : Window
             vm.Playlist.PlayCommand.Execute(row);
     }
 
+    private void PlaylistOpenFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (PlaylistList.SelectedItem is not PlaylistRow row || DataContext is not MainViewModel vm) return;
+        var t = row.Item.Track;
+        if (t is null) return;
+        if (t.SourceType == TrackSourceType.Local && !string.IsNullOrEmpty(t.FilePath))
+        {
+            var dir = Path.GetDirectoryName(t.FilePath);
+            if (dir is not null) OpenInExplorer(dir, t.FilePath);
+        }
+        else if (t.SourceType == TrackSourceType.Cloud && row.IsCached)
+        {
+            OpenInExplorer(vm.Playlist.CacheRoot, null);
+        }
+    }
+
+    private void PlaylistUpload_Click(object sender, RoutedEventArgs e)
+    {
+        if (PlaylistList.SelectedItem is PlaylistRow row && DataContext is MainViewModel vm)
+            vm.Playlist.UploadToCloudCommand.Execute(row);
+    }
+
+    private void PlaylistDownloadAs_Click(object sender, RoutedEventArgs e)
+    {
+        if (PlaylistList.SelectedItem is PlaylistRow row && DataContext is MainViewModel vm)
+            vm.Playlist.DownloadAsCommand.Execute(row);
+    }
+
+    /// <summary>右键菜单打开前，把鼠标下的行设为选中项，确保"打开文件夹/上传/下载"作用于右键目标。</summary>
+    private void PlaylistList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        var pt = Mouse.GetPosition(PlaylistList);
+        var hit = VisualTreeHelper.HitTest(PlaylistList, pt)?.VisualHit;
+        while (hit != null && hit is not ListBoxItem) hit = VisualTreeHelper.GetParent(hit);
+        if (hit is ListBoxItem lbi && lbi.DataContext is PlaylistRow row) PlaylistList.SelectedItem = row;
+    }
+
+    /// <summary>右键菜单弹出时，按曲目类型/缓存状态调整各项可见性。</summary>
+    private void PlaylistContextMenu_Opened(object? sender, RoutedEventArgs e)
+    {
+        if (PlaylistList.SelectedItem is not PlaylistRow row) return;
+        var t = row.Item.Track;
+        var isLocal = t?.SourceType == TrackSourceType.Local;
+        var isCloud = t?.SourceType == TrackSourceType.Cloud;
+        MiOpenFolder.Visibility = (isLocal || (isCloud && row.IsCached)) ? Visibility.Visible : Visibility.Collapsed;
+        MiUpload.Visibility = isLocal ? Visibility.Visible : Visibility.Collapsed;
+        MiDownload.Visibility = isCloud ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static void OpenInExplorer(string dir, string? file)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(file) && File.Exists(file))
+                Process.Start("explorer.exe", $"/select,\"{file}\"");
+            else if (Directory.Exists(dir))
+                Process.Start("explorer.exe", dir);
+        }
+        catch
+        {
+            // 资源管理器启动失败忽略。
+        }
+    }
+
+    private void OnLyricsCandidatesRequested(object? sender, LyricsCandidatesRequestedEventArgs e)
+    {
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            var dlg = new LyricCandidateWindow(e.Candidates) { Owner = this };
+            if (dlg.ShowDialog() == true && dlg.Selected is { } c && DataContext is MainViewModel vm)
+                vm.Playback.ChooseCandidate(c);
+        });
+    }
+
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel vm)
@@ -59,7 +174,13 @@ public partial class MainWindow : Window
             new CloudWindow(MusicPlayer.Desktop.App.Services.GetRequiredService<CloudViewModel>()) { Owner = this }.Show();
     }
 
-    private void Exit_Click(object sender, RoutedEventArgs e) => Close();
+    private void Exit_Click(object sender, RoutedEventArgs e) => ExitApp();
+
+    private void ExitApp()
+    {
+        _forceClose = true;
+        Close();
+    }
 
     /// <summary>
     /// 窗口激活时按空格切换播放/暂停（隧道事件，先于所有子控件触发，保证窗口级生效）。
@@ -99,6 +220,40 @@ public partial class MainWindow : Window
             lb.SelectedItem = null;
         }
     }
+
+    #region 最小化到状态栏 + 托盘
+    protected override void OnStateChanged(EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            Hide();
+            if (_notify is not null) _notify.Visible = true;
+        }
+        base.OnStateChanged(e);
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        // 未显式退出时，关闭按钮改为最小化到托盘，避免误关丢失播放。
+        if (!_forceClose)
+        {
+            e.Cancel = true;
+            Hide();
+            if (_notify is not null) _notify.Visible = true;
+            return;
+        }
+        _notify?.Dispose();
+        base.OnClosing(e);
+    }
+
+    private void RestoreFromTray()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+        if (_notify is not null) _notify.Visible = false;
+    }
+    #endregion
 
     #region 播放列表拖拽排序（WPF 原生，不依赖外部库）
     private PlaylistRow? _dragSource;

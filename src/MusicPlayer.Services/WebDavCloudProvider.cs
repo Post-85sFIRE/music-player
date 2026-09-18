@@ -35,8 +35,15 @@ public class WebDavCloudProvider : ICloudSourceProvider
 
     private string FullUrl(string relative)
     {
+        var raw = (relative ?? "").Trim();
+        // 兼容完整 URL：播放列表里存的云曲 FilePath 是已编码的 WebDAV 绝对地址（与鸿蒙端一致），
+        // 若再拼 BaseUrl 会造成重复拼接 + 双重编码（→ 400 Bad Request）。此处原样返回。
+        if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return raw;
+
         var baseUrl = _cfg.BaseUrl.Replace('\\', '/').TrimEnd('/');
-        var rel = (relative ?? "").TrimStart('/');
+        var rel = raw.TrimStart('/');
         if (string.IsNullOrEmpty(rel)) return baseUrl + "/";
         // 按段编码，避免中文/特殊字符路径 404；base 不动（已为合法 URL）。
         var encoded = string.Join("/", rel.Split('/').Select(s => Uri.EscapeDataString(s)));

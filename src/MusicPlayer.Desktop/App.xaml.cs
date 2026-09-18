@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
+using MusicPlayer.Core.Interfaces;
 using MusicPlayer.Desktop.ViewModels;
 using MusicPlayer.Services;
 
@@ -11,9 +12,46 @@ public partial class App : System.Windows.Application
 {
     public static ServiceProvider Services { get; private set; } = null!;
 
+    // 全局未处理异常兜底：把真实异常+堆栈落盘到 exe 同目录 crash.log，便于无显示器/沙箱环境定位。
+    // 注意：这里只写文件、不弹 MessageBox（避免无桌面环境时 MessageBox 卡死进程）。
+    static App()
+    {
+        AppDomain.CurrentDomain.UnhandledException += (_, ev) =>
+            LogCrash(ev.ExceptionObject as Exception ?? new Exception(string.Format("{0}", ev.ExceptionObject)), "AppDomain.UnhandledException");
+    }
+
+    private static void LogCrash(Exception ex, string where)
+    {
+        try
+        {
+            var path = System.IO.Path.Combine(AppContext.BaseDirectory, "crash.log");
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== crash @ {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ({where}) ===");
+            sb.AppendLine($"{ex.GetType().FullName}: {ex.Message}");
+            sb.AppendLine(ex.StackTrace ?? "(no stacktrace)");
+            if (ex.InnerException != null)
+                sb.AppendLine($"--- Inner: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}\n{ex.InnerException.StackTrace}");
+            System.IO.File.AppendAllText(path, sb.ToString() + Environment.NewLine);
+        }
+        catch { /* 诊断绝不能影响启动 */ }
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
-        base.OnStartup(e);
+        DispatcherUnhandledException += (_, ev) =>
+        {
+            LogCrash(ev.Exception, "DispatcherUnhandledException");
+            ev.Handled = true; // 交给下面的逻辑兜底，不直接崩
+        };
+
+        try
+        {
+            base.OnStartup(e);
+        }
+        catch (Exception ex)
+        {
+            LogCrash(ex, "base.OnStartup");
+        }
 
         // 关键顺序：先让主窗口显示出来，再做音频诊断提示。
         // 任何诊断/弹窗异常都不允许阻止窗口出现（WPF 会静默吞掉 OnStartup 异常，表现为"双击没反应"）。
@@ -61,6 +99,9 @@ public partial class App : System.Windows.Application
         // ReconnectSavedAsync，使"云盘音乐可直接播放"且连接状态在打开云盘窗口时可见。
         // 放在主窗口显示之后，确保 UI 线程已就绪；重连本身是 fire-and-forget，不阻塞启动。
         _ = Services.GetRequiredService<CloudViewModel>();
+
+        // 启动后静默检查更新（任何失败均静默忽略，不打扰用户）。
+        _ = Task.Run(() => VersionChecker.CheckAsync(Services.GetRequiredService<ISettingsService>()));
     }
 
     /// <summary>

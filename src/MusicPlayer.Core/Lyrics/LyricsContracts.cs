@@ -37,6 +37,17 @@ public class LyricsResult
     public string Source { get; init; } = "";
 }
 
+/// <summary>歌词候选（来自 LRCLIB /api/search 的多结果）。含可直接使用的同步/纯文本歌词，无需二次请求。</summary>
+public class LyricsCandidate
+{
+    public string Id { get; set; } = "";
+    public string TrackName { get; set; } = "";
+    public string ArtistName { get; set; } = "";
+    public string AlbumName { get; set; } = "";
+    public string? SyncedLyrics { get; set; }
+    public string? PlainLyrics { get; set; }
+}
+
 /// <summary>歌词来源提供方契约（本地文件 / 内嵌标签 / 云盘 / 网络）。</summary>
 public interface ILyricsProvider
 {
@@ -45,4 +56,10 @@ public interface ILyricsProvider
 
     /// <summary>尝试获取歌词；返回 null 表示此来源没有可用歌词。</summary>
     System.Threading.Tasks.Task<LyricsResult?> GetAsync(LyricsContext ctx, System.Threading.CancellationToken ct);
+}
+
+/// <summary>自动/手动歌词搜索命中多组候选时抛出的事件参数（跨层共用）。</summary>
+public class LyricsCandidatesRequestedEventArgs : EventArgs
+{
+    public LyricsCandidate[] Candidates { get; init; } = Array.Empty<LyricsCandidate>();
 }

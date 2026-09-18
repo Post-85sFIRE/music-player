@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MusicPlayer.Core.Enums;
 using MusicPlayer.Core.Interfaces;
+using MusicPlayer.Core.Lyrics;
 using MusicPlayer.Core.Models;
 
 namespace MusicPlayer.Services;
@@ -26,6 +27,7 @@ public class PlaybackManager
     private float _rgLinear = 1f;
 
     public Track? CurrentTrack => _current?.Track;
+    public string? CurrentLocalPath => _currentLocalPath;
     public bool IsPlaying => _engine.IsPlaying;
     public PlaylistItem? CurrentItem => _current;
     public long? CurrentItemId => _current?.Track?.Id;
@@ -34,6 +36,14 @@ public class PlaybackManager
     public event EventHandler<StateChangedEventArgs>? StateChanged;
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
     public event EventHandler<LyricsLoadedEventArgs>? LyricsChanged;
+
+    public event EventHandler<LyricsCandidatesRequestedEventArgs>? LyricsCandidatesRequested;
+
+    /// <summary>
+    /// 非模态状态提示（如"正在加载云曲…"）。用于替代云曲加载过程中的模态弹窗，
+    /// 避免打断当前正在播放的音乐。空字符串表示清除状态。
+    /// </summary>
+    public event EventHandler<string>? StatusMessage;
 
     public PlaybackManager(IAudioEngine engine, IPlaylistManager playlist, ISettingsService settings,
         INotificationService notify, CloudSourceRegistry cloud, IDownloadCacheService cache, LyricsService lyrics)
@@ -46,6 +56,7 @@ public class PlaybackManager
         _cache = cache;
         _lyrics = lyrics;
         _lyrics.LyricsChanged += (_, e) => LyricsChanged?.Invoke(this, e);
+        _lyrics.LyricsCandidatesRequested += (_, e) => LyricsCandidatesRequested?.Invoke(this, e);
 
         _engine.PlaybackEnded += (_, _) => OnPlaybackEnded();
         _engine.PositionChanged += (_, e) => PositionChanged?.Invoke(this, e);
@@ -81,11 +92,17 @@ public class PlaybackManager
         if (item.Track.SourceType == TrackSourceType.Cloud)
         {
             var provider = _cloud.Get(item.Track.SourceId ?? "");
+            // 容错：历史版本曾把云盘文件相对路径误存为 SourceId，导致精确匹配失败。
+            // 仅注册了一个云源时直接使用它（单云源场景的稳健降级）；多云源时仍按 Id 精确匹配。
+            if (provider is null && _cloud.All.Count == 1) provider = _cloud.All[0];
             if (provider is null) { _notify.Notify("云源未连接：" + (item.Track.SourceId ?? "")); return; }
-            // 用户反馈：播放云文件时不要弹“正在缓存”提示，直接后台加载并播放。
+
+            // 静默加载：不弹模态框、不打断当前正在播放的音乐，仅用非模态状态文字提示进度。
+            RaiseStatus($"正在加载：{item.Track.Title ?? ""} …");
             try
             {
-                // 关键修复：在后台线程池执行下载缓存，避免 UI 线程上的同步等待死锁（原 GetAwaiter().GetResult() 在 UI 上下文会永久卡死）。
+                // 在后台线程池执行下载缓存，避免 UI 线程同步等待死锁；
+                // 下载期间当前曲目继续播放，加载完成后才切换到新曲。
                 path = await Task.Run(async () => await _cache.CacheToLocalAsync(
                     provider.Id + "|" + item.Track!.FilePath,
                     () => provider.OpenStreamAsync(item.Track!.FilePath, null, CancellationToken.None),
@@ -93,19 +110,32 @@ public class PlaybackManager
             }
             catch (Exception ex)
             {
-                _notify.Notify("云文件缓存失败：" + ex.Message);
+                RaiseStatus($"加载失败（已保留当前播放）：{item.Track.Title ?? ""} —— {ex.Message}");
                 return;
             }
         }
 
         _currentLocalPath = path;
 
-        if (!_engine.Load(path))
+        // 云曲刚缓存完时文件可能仍被短暂占用（杀软扫描 / 句柄释放延迟），因此对加载做有限重试，
+        // 避免"首次播放新缓存的云曲必然失败、隔几秒重试才成功"的问题。
+        var loaded = _engine.Load(path);
+        for (var attempt = 0; !loaded && attempt < 3; attempt++)
+        {
+            await Task.Delay(250);
+            loaded = _engine.Load(path);
+        }
+        if (!loaded)
         {
             var detail = string.IsNullOrEmpty(_engine.LastError) ? "" : "\n" + _engine.LastError;
-            _notify.Notify("无法加载：" + path + detail);
+            // 云曲：静默失败（状态文字），不弹模态框；本地曲：保留原有弹窗提示（属真实错误）。
+            if (item.Track.SourceType == TrackSourceType.Cloud)
+                RaiseStatus($"加载失败（已保留当前播放）：{item.Track.Title ?? ""}{detail}");
+            else
+                _notify.Notify("无法加载：" + path + detail);
             return;
         }
+        RaiseStatus(string.Empty);
 
         _current = item;
         ApplyGain(item.Track!);
@@ -131,6 +161,13 @@ public class PlaybackManager
                 _engine.PrepareNext(next.Track.FilePath, () => OnGaplessAdvanced(next));
             }
         }
+    }
+
+    /// <summary>安全触发非模态状态提示；订阅方异常绝不应影响播放链路。</summary>
+    private void RaiseStatus(string message)
+    {
+        try { StatusMessage?.Invoke(this, message); }
+        catch { /* 忽略订阅方异常 */ }
     }
 
     /// <summary>

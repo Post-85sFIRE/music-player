@@ -1,0 +1,20 @@
+{
+  "windows": {
+    "version": "1.0.0",
+    "versionCode": 1,
+    "url": "https://github.com/Post-85sFIRE/music-player/releases/download/v1.0.0/MusicPlayer-Desktop-win-x64-v1.0.0.zip",
+    "notes": "Windows v1.0.0：修复云盘播放 400、静默缓存、歌词自动取首选、云盘同步提示换行、更换应用图标",
+    "size": 84001031,
+    "sha256": "5A4C20E22CDEBC07FFECE7E22C97591DD170DDD28CF52A25395ECE6A7A745E59",
+    "minVersionCode": 1
+  },
+  "android": {
+    "version": "1.0.0",
+    "versionCode": 1000000,
+    "url": "https://github.com/Post-85sFIRE/music-player/releases/download/v1.0.0/app-yunMusicPlayer-release.apk",
+    "notes": "安卓 v1.0.0 首个发布版：\n- 新增应用内版本更新（启动自动检查 + 设置页手动检查）\n- 坚果云 WebDAV 云播放、三层歌词、歌单持久化",
+    "size": 16960446,
+    "sha256": "978304f99ebea022711a664e09abb67ff83e9f65cc2ae289e0693e31f89e3c8d",
+    "minVersionCode": 1000000
+  }
+}

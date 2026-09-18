@@ -146,6 +146,18 @@ public partial class CloudViewModel
             return;
         }
 
+        // 确保固定应用目录 yunMusicPlayer 及其 Lyric 子目录存在（与鸿蒙版本一致；MKCOL 幂等）。
+        try
+        {
+            await provider.EnsureFolderAsync(CloudPaths.AppRoot, CancellationToken.None);
+            await provider.EnsureFolderAsync(CloudPaths.LyricDir, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "目录初始化失败：" + ex.Message;
+            return;
+        }
+
         _settings.Settings.CloudSources.Add(cfg);
         _settings.Save();
         _registry.Register(provider);
